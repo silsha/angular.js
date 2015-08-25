@@ -87,7 +87,9 @@ function Browser(window, document, $log, $sniffer) {
   var cachedState, lastHistoryState,
       lastBrowserUrl = location.href,
       baseElement = document.find('base'),
-      reloadLocation = null;
+      reloadLocation = null,
+      pendingHref = null,
+      pendingHrefTimer = null;
 
   cacheState();
   lastHistoryState = cachedState;
@@ -124,6 +126,18 @@ function Browser(window, document, $log, $sniffer) {
     if (location !== window.location) location = window.location;
     if (history !== window.history) history = window.history;
 
+    // Schedule cleaning up pendingHref on the next run loop for setting URL. This is to handle
+    // the case where the browser doesn't update the location.* properties immediately
+    if (!pendingHrefTimer && pendingHref && url) {
+      pendingHrefTimer = setTimeout(function () {
+        if (location.href == pendingHref) {
+          console.log('Actual href updated... setting pendingHref to null from setTimeout');
+          pendingHref = null;
+        }
+        pendingHrefTimer = null;
+      }, 0);
+    }
+
     // setter
     if (url) {
       var sameState = lastHistoryState === state;
@@ -147,6 +161,7 @@ function Browser(window, document, $log, $sniffer) {
         // Do the assignment again so that those two variables are referentially identical.
         lastHistoryState = cachedState;
       } else {
+        pendingHref = url;
         if (!sameBase || reloadLocation) {
           reloadLocation = url;
         }
@@ -161,10 +176,22 @@ function Browser(window, document, $log, $sniffer) {
       return self;
     // getter
     } else {
+      var href = location.href.replace(/%27/g, "'");
+      if (pendingHref) {
+        //console.log('.. using pendingHref for url() return value');
+        href = pendingHref;
+      }
+
+      if (location.href == pendingHref) {
+        console.log('Actual href updated... setting pendingHref to null in getter');
+        pendingHref = null;
+      }
+
+      //var href = location.href.replace(/%27/g,"'");
       // - reloadLocation is needed as browsers don't allow to read out
       //   the new location.href if a reload happened.
       // - the replacement is a workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=407172
-      return reloadLocation || location.href.replace(/%27/g,"'");
+      return reloadLocation || href;
     }
   };
 
